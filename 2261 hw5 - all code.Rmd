@@ -1,0 +1,491 @@
+---
+title: "2261 HW5"
+author: "Orly Olbum"
+date: "due: 4/6/2021"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Spring 2021/1. STAT 2261 - Survival Analysis/Homeworks/HW5")
+library(survival)
+library(KMsurv)
+
+data(bnct)
+data(hodg)
+data(pneumon)
+data(rats)
+```
+
+## Problem 1: 8.4
+*In Exercise 7 of Chapter 7, three different treatments were administered to rats who had F98 glioma cells implanted into their brains. The data for the three groups of rats lists the death times (in days) in that exercise. Create two dummy variables, Z1 = 1 if animal is in the “radiation only” group, 0 otherwise; Z2 = 1 if animal is in the “radiation plus BPA” group, 0 otherwise. Use the Breslow method of handling ties in the problems below.*
+
+Group 1: Untreated (baseline)  
+Group 2: Radiation only  
+Group 3: Radiation plus BPA  
+
+```{r}
+bnct$z1 = ifelse(bnct$trt == 2, 1, 0)
+bnct$z2 = ifelse(bnct$trt == 3, 1, 0)
+# head(bnct, 4)
+```
+
+# (a)
+*Estimate B1 and B2 and their respective standard errors. Find a 95% confidence interval for the relative risk of death of an animal radiated only compared to an untreated animal.*
+
+```{r}
+model1 = coxph(Surv(time, death) ~ z1 + z2, data = bnct, method = "breslow")
+# summary(model1)
+round(summary(model1)$coef[,1], 3) # B1 and B2
+round(summary(model1)$coef[,3], 3) # se's of B1 and B2
+
+# round(exp(summary(model1)$coef[1,1]), 3)
+# round(exp(2*(model1$coef[1] + c(-1, 1)*1.96*sqrt(model1$var[1,1]))), 4) # 95% CI around exp(B1)
+
+exp(confint(model1))
+```
+
+Estimates of B1 and B2 using the Breslow method for ties after fitting the Cox model are -1.81 and -3.56, with standard errors of 0.56 and 0.76, respectively.  
+
+A 95% confidence interval for relative risk of death of an animal radiated compared to untreated will compare treatment group 2 to treatment group 1, or z1 to the baseline. This interval surrounds the point estimate exp(B1) = 0.16, and the 95% CI is (0.05, 0.49).
+
+# (b)
+*Test the global hypothesis of no effect of either radiation or radiation plus BPA on survival. Perform the test using all the three tests (Wald, likelihood ratio, and score test).*
+
+The null hypothesis for these tests is that B1 and B2 are equal to zero, against an alternative hypothesis that they are not equal to zero. 
+
+```{r}
+summary(model1)
+```
+
+The summary output of the model shows us the test statistics and p-values for all three tests:  
+- Wald: 22.45  on 2 df, p = 1e-05  
+- LR: 27.37  on 2 df, p = 1e-06  
+- Score: 31.74  on 2 df, p = 1e-07 
+
+All three tests return statistically significant p-values, rejecting the null hypothesis that B1 = B2 = 0, which indicates that the treatments indicated do have some effect.
+
+# (c)
+*Test the hypothesis that the effect a radiated only animal has on survival is the same as the effect of radiation plus BPA (i.e., Test H0 : B1 = B2).*
+
+```{r}
+c((model1$coef %*% c(-1, 1)) / sqrt(c(-1, 1) %*% model1$var %*% c(-1, 1))) # test statistic
+2*(1- pnorm(2.7588)) # p-value
+```
+
+With a large (in abs val) test statistic (-2.76) and a low p-value (0.01), we can reject the null hypothesis that the effects are equal and conclude at 95% confidence that the two different treatments (radiation only vs. radiation with BPA) are not equal.
+
+# (d)
+*Find an estimate and a 95% confidence interval for the relative risk of death for a radiation plus BPA animal as compared to a radiated only animal.*
+
+```{r}
+c(est_RR = exp(model1$coef %*% c(-1, 1)), 
+  CI = exp(2*(model1$coef %*% c(-1, 1) + 
+                c(-1, 1)*1.96*sqrt(c(-1, 1) %*% model1$var %*% c(-1, 1))))) # RR interval 
+```
+
+The relative risk for group 3 against group 2 will be 0.17, with a confidence interval of (0.003, 0.364).
+
+# (e)
+*Test the hypothesis that any radiation given as a treatment (either radiation alone or with BPA) has a different effect on survival than no radiation. Use the likelihood ratio test.*
+
+```{r}
+bnct$z3 = ifelse(bnct$trt > 1, 1, 0) # any treatment
+model1e = coxph(Surv(time, death) ~ z3, data = bnct, method = "breslow")
+summary(model1e)
+```
+
+After coding a new covariate that indicates any treatment vs. no treatment, we can re-run the same cox model and see that the LR test returns a value of 18.93 on 1 df, with a p-value of 1e-05, which tells us that any treatment (radiation alone or with BPA) does have a different effect on survival than no treatment.
+
+# (f)
+*Repeat part (e) using a Wald test.*
+
+From the same output above we can see the Wald test statistic is 18.86 on 1 df, with a p-value of 1e-05 which leads us to the same conclusion as in (e).
+
+
+## Problem 2: 8.5
+*Using the data set in Exercise 1, using the Breslow method of handling ties,*
+
+# (a)
+*Analyze the data by performing a global test of no effect of group as defined in Exercise 8.1(a) on survival. Construct an ANOVA table to summarize estimates of the risk coefficients and the results of the one degree of freedom tests for each covariate in the model.*
+
+Allo NHL: gtype = 1, dtype = 1  
+Auto NHL: gtype = 2, dtype = 1  
+Allo HOD: gtype = 1, dtype = 2  
+Auto HOD: gtype = 2, dtype = 2  
+
+Group 1: Allo NHL (baseline)  
+Group 2: Auto NHL  
+Group 3: Allo HOD  
+Group 4: Auto HOD
+
+```{r}
+hodg$z1 = ifelse(hodg$gtype == 2 & hodg$dtype == 1, 1, 0) # group 2
+hodg$z2 = ifelse(hodg$gtype == 1 & hodg$dtype == 2, 1, 0) # group 3
+hodg$z3 = ifelse(hodg$gtype == 2 & hodg$dtype == 2, 1, 0) # group 4
+# head(hodg, 4)
+
+model2a = coxph(Surv(time, delta) ~ z1 + z2 + z3, data = hodg, method = "breslow")
+model2a
+anova(model2a)
+```
+
+The only coefficient p-value belongs to the z2 coefficient, which indicates a significant relative risk between group 3 and the baseline group 1.
+
+# (b)
+*Repeat part (a) using the coding as described in Exercise 8.1(b). Furthermore, test the hypothesis of disease type by transplant interaction using a likelihood ratio rest based on this coding. Repeat using the Wald test.*
+
+Set up new dummy variables y1 and y2, where y1 = 0 for Allo and = 1 for Auto, and y2 = 1 for HOD and = 0 for NHL. This new dummy variable allows us to test for differences between disease type and transplant type as two groups rather than as four, and test for the interaction between disease type and transplant type.
+
+```{r}
+hodg$y1 = ifelse(hodg$gtype == 1, 0, 1)
+hodg$y2 = ifelse(hodg$dtype == 1, 0, 1)
+model2b = coxph(Surv(time, delta) ~ y1 + y2 + y1*y2, data = hodg, method = "breslow")
+summary(model2b)
+anova(model2b)
+```
+
+The dummy variables code for NHL Allo to be the baseline group, with both y1 and y2 being 0.  
+- LR: 7.89  on 3 df,   p = 0.05  
+- Wald: 9.26  on 3 df,   p = 0.03  
+The LR test is not significant for including effect of interaction, while the Wald test does produce a statistically significant p-value, and the interaction term itself is a significant effect.
+
+# (c)
+*Find point estimates and 95% confidence intervals for the relative risk of death for an NHL Auto transplant patient as compared to an NHL Allo transplant patient.*
+
+The relative risk of death for NHL Auto compared to NHL Allo will be exponential of the coefficient for y1 from the model in (b).
+
+```{r}
+round(exp(model2b$coefficients[1]), 3)
+round(exp(confint(model2b)[1,]), 3)
+# round(exp(model2b$coef[1] + c(est_RR = 0, CI = c(-1, 1)*1.96*sqrt(model2b$var[1,1]))), 3) # fancy way to do the same thing
+```
+
+The relative risk of death for NHL Auto (group 2) compared to NHL Allo (group 1, baseline) will be exp(B1) = 1.94, with a 95% CI of (0.64, 5.87).
+
+# (d)
+*Find the p-value of a test of the hypothesis that the hazard rates are the same for HOD Allo transplants and NHL Allo patients, using the Wald test. Repeat a similar test for Auto patients.*
+
+We are testing that for each treatment type, the hazard rates are the same for disease types. First, among Allo transplant patients (gtype = 1), are HOD and NHL hazard rates equal? Second, among Auto transplant patients (gtype = 2), are HOD and NHL hazard rates equal?
+
+```{r}
+c(stat=x <- model2b$coef[2]/sqrt(model2b$var[2,2]), pval = 2*(1 - pnorm(abs(x))))
+c(stat=x <- (sum(model2b$coef[2:3])/sqrt(sum(model2b$var[2:3,2:3]))), 
+  pval = 2*(1 - pnorm(abs(x))))
+```
+
+Between Allo patients, the p-value is 0.007, and we can reject the null hypothesis that hazard rates are the same for NHL and for HOD. Between Auto patients, the p-value is 0.312, and we fail to reject the null.
+
+# (e)
+*Test the hypothesis, using the Wald test, that the hazard rates for Auto transplant and Allo transplant patients are the same for each disease group against the alternative that the hazard rates for Auto transplant and Allo transplant patients for at least one group are different using a two-degree of freedom test of H0 : h(t|NHL Allo) = h(t|NHL Auto) and H0 : h(t |HOD Allo) = h(t|HOD Auto).*
+
+This time we are testing that for each disease type, the hazard rates are the same for transplant types. First, among HOD patients, are Auto and Allo hazard rates equal? Second, among NHL patients, are Auto and Allo hazard rates equal?
+
+```{r}
+c(model2b$coef[-2] %*% solve(model2b$var[-2,-2]) %*% model2b$coef[-2]) # test statistic
+1 - pchisq(8.50, 2) # p-value
+```
+
+With a test statistic of 8.49 and a p-value of 0.014 we can reject the null hypothesis and conclude that there are differences.
+
+
+## Problem 3: 8.11
+*In section 1.13, data gathered from annual personal interviews conducted for the National Longitudinal Survey of Youth (NLSY) from 1979 through 1986 was presented. This data was used to study whether or not the mother’s feeding choice protected the infant against hospitalized pneumonia in the first year of life. Ages of young children at the time they were hospitalized with pneumonia were recorded as well as the observed ages of those infants that were not hospitalized with pneumonia during the study period. The data is available from our web site, which can be reached via the authors’ pages at http://www.springerny.com. Use the discrete method for handling ties in the following.*
+
+# (a)
+*Consider the dummy variable Z = 1 if infants were breast fed at birth, 0 if infants were never breast fed, and test the hypothesis H0 : B = 0, i.e., the survival functions for the two types of breast feeding are equal, using the score, likelihood ratio, and Wald tests. Find the estimate of B, b, the standard error of b, and the relative risk using the Wald test.*
+
+```{r}
+pneumon$z = ifelse(pneumon$wmonth == 0, 0, 1)
+model3a = coxph(Surv(chldage, hospital) ~ z, data = pneumon, method = "efron")
+summary(model3a)
+```
+
+The model shows a significant effect of z (breastfed at birth) on child's age of hospitalization. The estimate for B is -1.097 with a standard error of 0.297. To test H0: B = 0, we look at the bottom of the summary to see:  
+- Likelihood ratio test= 16.59  on 1 df,   p=5e-05  
+- Wald test            = 13.62  on 1 df,   p=2e-04  
+- Score (logrank) test = 15.04  on 1 df,   p=1e-04  
+All tests show significant p-values which lead us to reject the null and conclude that breastfeeding at birth does have effect on hospitalization due to pneumonia. The relative risk of breastfeeding at birth against not breastfeeding at birth is exp(z1) = 0.334, with a 95% CI of (0.186, 0.598)
+
+# (b)
+*Also available in the data set is information on other factors that may be associated with the timing of hospitalized pneumonia. These factors are age of the mother at the infant’s birth, rural-urban environment of the mother, use of alcohol by the mother (no drinks, less than one drink, 1–2 drinks, 3–4 drinks, or more than 4 drinks per month), mother’s cigarette use (none, less than 1 pack/day, 1 or more pack/day), region of country (northeast, north central, south, or west), birthweight of infant (less the 5.5 lbs or 5.5 lbs or more), poverty status of mother (yes/no), race of mother (white, black, or other), or number of siblings of infant. For each factor create a set of fixed-time covariates. Test the hypothesis that the times to hospitalized pneumonia are the same for the two feeding groups adjusting for each of these factors in a separate model using the Wald test.*
+
+Testing if, including these other factors (one at a time), breastfeeding at birth is still a significant effect on hospitalization due to pneumonia.
+
+```{r}
+# age of mother at infant's birth
+model_age = coxph(Surv(chldage, hospital) ~ z + mthage, data = pneumon, method = "efron")
+print("age")
+round(summary(model_age)$waldtest, 4)
+
+# rural-urban environment
+model_urban = coxph(Surv(chldage, hospital) ~ z + urban, data = pneumon, method = "efron")
+print("urban")
+round(summary(model_age)$waldtest, 4)
+
+# use of alcohol: none, <1, 1-2, 3-4, >4
+model_alcohol = coxph(Surv(chldage, hospital) ~ z + 
+                        as.factor(alcohol), data = pneumon, method = "efron")
+print("alcohol")
+round(summary(model_alcohol)$waldtest, 4)
+
+# cigarette use: none, <1, >1
+model_smoke = coxph(Surv(chldage, hospital) ~ z + 
+                      as.factor(smoke), data = pneumon, method = "efron")
+print("smoke")
+round(summary(model_smoke)$waldtest, 4)
+
+# region of country: northeast, north central, south, west
+model_region = coxph(Surv(chldage, hospital) ~ z + 
+                       as.factor(region), data = pneumon, method = "efron")
+print("region")
+round(summary(model_region)$waldtest, 4)
+
+# birthweight of infant: <5.5 or >= 5.5
+model_bweight = coxph(Surv(chldage, hospital) ~ z + 
+                        bweight, data = pneumon, method = "efron")
+print("birth weight")
+round(summary(model_bweight)$waldtest, 4)
+
+# poverty status of mother: yes/no
+model_poverty = coxph(Surv(chldage, hospital) ~ z + 
+                        poverty, data = pneumon, method = "efron")
+print("poverty")
+round(summary(model_poverty)$waldtest, 4)
+
+# race of mother: white, black other
+model_race = coxph(Surv(chldage, hospital) ~ z + 
+                     as.factor(race), data = pneumon, method = "efron")
+print("race")
+round(summary(model_race)$waldtest, 4)
+
+# number of siblings of infant
+model_nsibs = coxph(Surv(chldage, hospital) ~ z + 
+                      nsibs, data = pneumon, method = "efron")
+print("no. of siblings")
+round(summary(model_nsibs)$waldtest, 4)
+
+```
+
+At a significance level of 0.05, all other factors tested here introduced in addition to the level of breastfeeding are significant predictors of hospitalization due to pneumonia.
+
+# (c)
+*Since one is primarily interested in comparing the two types of breast feeding, interest will center upon building a model with the view of testing the particular comparison of interest adjusting for the other noncontrollable fixed covariates in part b. Build such a model using the AIC approach and the Wald test.*
+
+```{r}
+completemodel = coxph(Surv(chldage, hospital) ~ z + mthage + urban + 
+                        as.factor(alcohol) + as.factor(smoke) + as.factor(region) + 
+                        bweight + poverty + as.factor(race) + nsibs, 
+                      data = pneumon, method = "efron")
+# summary(completemodel)
+
+model_aic = step(completemodel)
+summary(model_aic)
+```
+
+A summary of the complete model after the step through AIC process yields an AIC of 1146.68 and a Wald test statistic of 34.53 on 5 df, with a p-value of p=2e-06.
+
+# (d)
+*Summarize your findings from this data set.*
+
+From the exercises above we can see that not only does breast-feeding an infant at birth have a positive effect on hospitalization for pneumonia later in a child's life, but other factors contribute to the severity of pneumonia as well. We saw in (b) that, when introduced one by one, all factors accounted for in this dataset have a significant effect, and in (c) we saw that the model with mother's age, smoking, and number of siblings yields the most efficient model (i.e., lowest AIC).
+
+
+
+## Problem 4: 9.6
+*In Exercise 13 of Chapter 7, data was presented on a litter-matched study of the tumorigenesis of a drug. The data is found in that exercise.*
+
+# (a)
+*Ignoring the fact that this was a litter-matched study, fit a proportional hazards model to this data to estimate the relative risk of tumorigenesis of the drugged rats as compared to the control rats. Find a 95% confidence interval for this relative risk.*
+
+```{r}
+model3a = coxph(Surv(time, tumor) ~ trt, data = rats)
+summary(model3a)
+exp(confint(model3a))
+```
+
+The estimated relative risk of tumors for drugged rats compared to control rats is exp(B1) = 2.47 with a 95% CI of (1.33, 4.60).
+
+# (b)
+*Repeat part a using a proportional hazards model stratified on litter. Compare your results.*
+
+```{r}
+model3b = coxph(Surv(time, tumor) ~ trt + strata(litter), data = rats)
+summary(model3b)
+exp(confint(model3b))
+```
+
+The new estimate for relative risk of tumors for treated rats compared to control rats is 2.41 with a 95% CI of (1.15, 5.05), which is a wider interval than the interval from (a).
+
+
+## Problem 5: 12.3 (no f)
+*In section 1.10, times to death or relapse (in days) are given for 23 non-Hodgkin’s lymphoma (NHL) patients, 11 receiving an allogeneic (Allo) transplant from an HLA-matched sibling donor and 12 patients receiving an autologous (Auto) transplant. Also, data is given in Table 1.5 on 20 Hodgkin’s lymphoma (HOD) patients, 5 receiving an allogeneic (Allo) transplant from an HLA-matched sibling donor and 15 patients receiving an autologous (Auto) transplant. Because there is a potential for different efficacy of the two types of transplants for the two types of lymphoma, a model with a main effect for type of transplant, a main effect for disease type and an interactive term is of interest (coding similar to 8.1b).*
+
+# (a)
+*Using a Weibull regression model, analyze this data by performing a likelihood ratio global test of no effect of transplant type and disease state on survival. Construct an ANOVA table to summarize estimates of the risk coefficients and the results of the one degree of freedom tests for each covariate in the model.*
+
+```{r}
+hodg$y1 = ifelse(hodg$gtype == 1, 0, 1) # 1 for auto, 0 for allo
+hodg$y2 = ifelse(hodg$dtype == 1, 0, 1) # 1 for HOD, 0 for NHL
+model5a = survreg(Surv(time, delta) ~ y1 + y2 + y1*y2, data = hodg, dist = "weibull")
+summary(model5a)
+
+# set up for ANOVA table
+var.scale = model5a$var[5,5]*model5a$scale^2
+sigma = model5a$scale
+mu = model5a$coef[1]
+g1 = model5a$coef[2]
+g2 = model5a$coef[3]
+g3 = model5a$coef[4]
+var.mu = model5a$var[1,1]
+var.sigma = model5a$var[5,5]*sigma^2
+r = exp(-2*mu/sigma)*(var.mu/sigma^2 - 2*mu*model5a$var[5,1]*sigma/sigma^3 + mu^2*var.sigma/sigma^4)
+# sqrt(r)
+# var.sigma/sigma^4
+# sqrt(var.sigma/sigma^4)
+cov.scale = model5a$var[5,1]*sigma
+
+# intercept
+var.lam = exp(-2*mu/sigma)*(var.mu/sigma^2 - 2*mu*cov.scale/sigma^3 + mu^2*var.sigma/sigma^4)
+sqrt(var.lam)
+
+# auto vs. allo
+var.beta1 = model5a$var[2,2]/sigma^2 - 2*g1*model5a$var[2,5]*sigma/sigma^3 + g1^2*var.sigma/sigma^4
+sqrt(var.beta1)
+2*(1 - pnorm(1.23/sqrt(var.beta1)))
+
+# hod vs. nhl
+var.beta2 = model5a$var[3,3]/sigma^2 - 2*g2*model5a$var[3,5]*sigma/sigma^3 + g2^2*var.sigma/sigma^4
+sqrt(var.beta2)
+2*(1 - pnorm(2.54/sqrt(var.beta2)))
+
+# interaction
+var.beta3 = model5a$var[4,4]/sigma^2- 2 *g3*model5a$var[4,5]*sigma/sigma^3 + g3^2*var.sigma/sigma^4
+sqrt(var.beta3)
+2*(pnorm(-3.24/sqrt(var.beta3)))
+```
+
+See output for ANOVA table.
+
+# (b)
+*Test the hypothesis of no disease–transplant type interaction using a likelihood ratio test.*
+
+```{r}
+model5b = survreg(Surv(time, delta) ~ y1 + y2, data = hodg, dist = "weibull")
+summary(model5b)
+
+1 - pchisq(13, 1)
+```
+
+Using the LR test, we have a test statistic of LR = 2*(-176.5 - (-183)) = 13 on df = 1, with a p-value of 0.0003. This leads us to reject the null hypothesis at 95% confidence
+
+# (c)
+*Find point estimates and 95% confidence intervals for the relative risk of death for an NHL Auto transplant patient as compared to an NHL Allo transplant patient.*
+
+Since NHL Allo is the baseline group, we need exp(B1).
+
+```{r}
+fit1 = survreg(Surv(time, delta) ~ y1 + y2 + y1*y2, data = hodg, dist = "weibull")
+
+g = c(fit1$coefficients,fit1$scale)
+gdim = length(g)
+v = fit1$var  # R outputs log (sigma) instead of sigma!
+
+# transformed parameters
+gnew = NULL
+gnew[1] = exp(-g[1]/g[gdim])
+gnew[2:(gdim-1)] = -g[2:(gdim-1)]/g[gdim]
+gnew[gdim] = 1/g[gdim]
+
+grdn = matrix(0,nrow=gdim, ncol = gdim)
+grdn[1,1] = -exp(-g[1]/g[gdim])/g[gdim]
+grdn[1,gdim] = exp(-g[1]/g[gdim])*g[1]/g[gdim]
+
+for(i in 2:(gdim-1))
+{grdn[i,gdim] = g[i]/g[gdim]
+grdn[i,i]=-1/g[gdim]
+}
+grdn[gdim,gdim] = -1/g[gdim]
+newvar = grdn%*%v%*%t(grdn)
+
+cbind(gnew,sqrt(diag(newvar)))
+
+c(exp(gnew[2]), lo = exp(gnew[2] - 1.96*sqrt(diag(newvar))[2]), 
+  hi = exp(gnew[2] + 1.96*sqrt(diag(newvar))[2]))
+```
+
+The CI's produced are for the intercept, treatment type, disease type, interaction effect, and scale. The estimate for relative risk for NHL Auto compared to NHL Allo is 3.43 with a 95% CI of (1.11, 10.57).
+
+# (d)
+*Test the hypothesis that the death rates are the same for HOD Allo transplants and NHL Allo patients. Repeat this test for Auto patients.*
+
+```{r}
+# hodg$y1 = ifelse(hodg$gtype == 1, 0, 1) # 1 for auto, 0 for allo
+# hodg$y2 = ifelse(hodg$dtype == 1, 0, 1) # 1 for HOD, 0 for NHL
+model5d = survreg(Surv(time, delta) ~ y1 + y2, data = hodg, dist = "weibull")
+summary(model5d)
+
+g = c(model5d$coefficients, model5d$scale)
+gdim = length(g)
+v = model5d$var  # R outputs log (sigma) instead of sigma!
+
+# transformed parameters
+gnew = NULL
+gnew[1] = exp(-g[1]/g[gdim])
+gnew[2:(gdim-1)] = -g[2:(gdim-1)]/g[gdim]
+gnew[gdim] = 1/g[gdim]
+
+grdn = matrix(0,nrow=gdim, ncol = gdim)
+grdn[1,1] = -exp(-g[1]/g[gdim])/g[gdim]
+grdn[1,gdim] = exp(-g[1]/g[gdim])*g[1]/g[gdim]
+
+for(i in 2:(gdim-1))
+{grdn[i,gdim] = g[i]/g[gdim]
+grdn[i,i]=-1/g[gdim]
+}
+grdn[gdim,gdim] = -1/g[gdim]
+newvar = grdn%*%v%*%t(grdn)
+
+cbind(gnew,sqrt(diag(newvar)))
+```
+
+To test these hypothesis, we can test whether B1 = 0 to assess whether or not death rates are the same for Auto vs. Allo patients (given constant disease type), and B2 = 0 for whether or not death rates are the same for HOD vs NHL (given constant treatment type). We have estimates of -0.00097 and 0.3056, respectively, neither of which are significant so we fail to reject the null hypothesis that death rates are the same for Auto vs. Allo patients and for HOD vs. NHL patients.
+
+# (e)
+*Test the hypothesis that the death rates for Auto transplant and Allo transplant patients are the same against the alternative they are different for at least one disease group by a 2 degree of freedom test of H0 : h(t|NHL Allo) = h(t|NHL Auto) and h(t|HOD Allo) = h(t|HOD Auto).*
+
+```{r}
+model5e = survreg(Surv(time, delta) ~ y1 + y2 + y1*y2, data = hodg, dist = "weibull")
+summary(model5e)
+
+g = c(model5e$coefficients, model5e$scale)
+gdim = length(g)
+v = model5e$var  # R outputs log (sigma) instead of sigma!
+
+# transformed parameters
+gnew = NULL
+gnew[1] = exp(-g[1]/g[gdim])
+gnew[2:(gdim-1)] = -g[2:(gdim-1)]/g[gdim]
+gnew[gdim] = 1/g[gdim]
+
+grdn = matrix(0,nrow=gdim, ncol = gdim)
+grdn[1,1] = -exp(-g[1]/g[gdim])/g[gdim]
+grdn[1,gdim] = exp(-g[1]/g[gdim])*g[1]/g[gdim]
+
+for(i in 2:(gdim-1))
+{grdn[i,gdim] = g[i]/g[gdim]
+grdn[i,i]=-1/g[gdim]
+}
+grdn[gdim,gdim] = -1/g[gdim]
+newvar = grdn%*%v%*%t(grdn)
+
+cbind(gnew,sqrt(diag(newvar)))
+
+model.limit = survreg(Surv(time, delta) ~ y2, data = hodg, dist = "weibull")
+stat = -2*(model5e$loglik - model.limit$loglik)
+1 - pchisq(-1*stat[2], 2)
+```
+
+From the model with interaction between disease type and treatment type, we can test this hypothesis by looking at B1 to compare Auto vs. Allo for NHL patients, and looking at B1 + B3 to compare Auto vs. Allo for HOD patients, since the interaction at 0 includes HOD patients. This leads to a c matrix of (1 0 1, 0 0 1). Additionally, if we leave out y1 and find the likelihood ratio statistic, we can see that, based on the low p-value, there is an effect of disease type.
+
+

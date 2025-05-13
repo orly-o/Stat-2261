@@ -1,0 +1,88 @@
+---
+title: "2261 Quiz 2"
+author: "Orly Olbum"
+date: "3/11/2021"
+output: 
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/2. Spring 2021/1. STAT 2261 - Survival Analysis/Quizzes & Exams/Quiz 2")
+library(Hmisc)
+data = read.csv("SimRelapse.csv")
+```
+
+
+## 1
+*mean relapse time using subjects who have relapsed, ignoring censored observations*
+
+KM estimator only including event = 1 (relapse time is observed, excluding RC observations). We may also take a simple mean of all survival times for those subjects not censored (same result as fitting a KM estimator and finding the restricted mean); since the KM estimator was made to take into account censoring times, it may not make sense to fit it when we are ignoring censored subjects.
+
+```{r}
+dat.ignore = data[data$event == 1,]
+
+fit1 = survfit(Surv(time, event) ~ 1, data = dat.ignore, type = "kaplan-meier")
+summary(fit1)
+print(fit1, print.rmean = TRUE)
+
+mean(dat.ignore$time)
+```
+
+The mean ignoring censored observations is 6.425 years.
+
+
+## 2
+*construct KM curve for relapse-free probability and obtain estimate based on curve*
+
+```{r}
+fit2 = survfit(Surv(time, event) ~ 1, data = data, type = "kaplan-meier")
+summary(fit2)
+print(fit2, print.rmean = TRUE)
+```
+
+The mean considering all subjects in the study is 7.59 years.
+
+
+## 3
+*compare the two mean estimates, specify which one you prefer*
+
+The second mean estimate takes into account right censoring in the data, so this one is preferred. If we ignore censored subjects, the survival curve is pulled down, and we underestimate the survival probability. The mean survival time for the curve ignoring the censored subjects is also lower, as seen in the following plot.
+
+```{r}
+plot(fit2, main = "KM Curve for relapse-free prob", xlab = "time", 
+     ylab = "relapse-free probability")
+lines(fit1, col = "red")
+abline(v = 6.425, col = "red")
+abline(v = 7.59, col = "black")
+```
+
+
+## 4
+*draw conclusion about distribution of censoring times.*
+
+The largest p-value occurs for H0(t) = 0.148t, so this distribution with failure rate 0.148 has the best fit for this data.
+
+
+## 5
+*inversely weigh observed relapse times by estimated survival function of censoring, calculate mean relapse time using theta chosen from part 4.*
+
+```{r}
+theta = 0.148
+data$g = exp(-1 * theta * data$time)
+data$relapse = (data$time*data$event)/data$g
+new.mean = (1/200) * sum(data$relapse)
+new.mean
+```
+
+
+## 6
+*compare to mean estimate in part 3 - does new mean estimate seem a reasonable estimate of mean relapse time? justify.*
+
+The new mean is 7.74. This new estimate is slightly higher than the preferred estimate from part 3. This weight essentially cancels out censored observations, but takes into account that there are 200 total observations, which seems like the best of both worlds (one being that we want to find an average based on fully observed subjects, and two that we also want to account for the fact that our study included censored subjects). It also takes into account the estimated NA cumulative hazard function and test results.
+
+
+
+

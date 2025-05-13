@@ -1,0 +1,92 @@
+---
+title: "STAT 2261 Final"
+author: "Orly Olbum"
+date: "4/15/2021"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Spring 2021/1. STAT 2261 - Survival Analysis/Quizzes & Exams/Midterm")
+library(survival)
+library(KMsurv)
+# library(cmprsk)
+
+covid = read.csv("covid.csv")
+```
+
+## Problem 1
+
+*Examine thrombotic-event-free survival curves for those who received high dose of Heparin and for those who were randomized to the low dose group and perform a two-sample test to compare the efficacy of using a high dose versus a low dose in preventing major thrombotic events or death.*
+
+```{r, fig.width = 5, fig.height = 3.5}
+model1 = survdiff(Surv(time, event) ~ as.factor(trt), data = covid)
+model1
+plot(survfit(Surv(time, event) ~ as.factor(trt), data = covid), ylab = "Probability", 
+     xlab = "Time", main = "KM Curve for model1")
+```
+
+The log rank tests a null hypothesis that there is no difference in survival curves between the groups specified (here, high dose vs. low dose) against the alternative hypothesis that there is evidence of some difference in our sample. The test statistic provides a p-value of 0.2, which is above our threshold for alpha = 0.05, so we fail to reject the null hypothesis and conclude that we don't have evidence to suggest there is a difference in using high vs. low dose in preventing major thrombotic events or death.
+
+
+## Problem 2
+
+*Fit a Cox proportional hazard model with treatment, two dummy variables for D-dimer with the low level as the reference, severity and age as predictors. After adjusting for other risk factors, does the high dose of Heparin seem to help prevent major thrombotic events or death?*
+
+```{r}
+model2 = coxph(Surv(time, event) ~ as.factor(trt) + as.factor(Ddimer) + 
+                 as.factor(severity) + age, data = covid)
+model2
+
+model2.2 = coxph(Surv(time, event) ~ as.factor(Ddimer) + as.factor(severity) + 
+                   age, data = covid)
+model2.2
+```
+
+After fitting all variables in the Cox model, the high does of Heparin does not seem to help prevent major thrombotic events/death, in the full model it is not a significant predictor. We can also use the likelihood ratio test to see if adding or keeping out treatment (Heparin dose) in the model has any effect. We get a LR test stat of 55.57 - 55.35 = 0.22 on 1 df, which follows chi-sq distribution under the null hypothesis, and does not produce a statistically significant p-value, which says that keeping it in the model does not change probability of thrombotic event.
+
+
+## Problem 3
+
+*There is some concern that those who need the ICU level care may benefit differently from Heparin than those who do not need the ICU level care. Test whether this is true by adding a severity and treatment interaction to your model.*
+
+```{r}
+model3 = coxph(Surv(time, event) ~ as.factor(trt) + as.factor(Ddimer) + 
+                 as.factor(severity) + age + as.factor(trt)*as.factor(severity), 
+               data = covid)
+model3
+```
+
+The interaction term for trt*severity is a significant predictor in the model. We can also justify this with a LR test, with a test statistic of 70.9 - 55.57 = 15.33 on 1 df, which gives a p-value of < 0.05. It appears that those who need ICU level care do benefit differently from Heparin than those who do not need ICU level care.
+
+
+## Problem 4
+
+*Can the variable Ddimer be included in the Cox model as a continuous variable? Justify your answer.*
+
+If we include a factor variable as continuous, the model will interpret the increase in unit (i.e., from 0 to 1, from 1 to 2) as increase in value, rather than a change of category for the variable. Because of this, we treat it as two dummy variables (or, for coding, use "as.factor" when including in the model). Additionally, we cannot have Ddimer levels between the numbers allotted. 0, 1, and 2 are designated to refer to categorical levels, and we cannot have a level 0.4 or 1.7 (an example of this is below - if we fit Ddimer as a continuous variable - however, it does not have an accurate interpretation). Thus, we must treat Ddimer and other variables like it as factor (categorical) variables.
+
+```{r}
+model4 = coxph(Surv(time, event) ~ as.factor(trt) + Ddimer + as.factor(severity) + 
+                 age + as.factor(trt)*as.factor(severity), data = covid)
+model4
+```
+
+
+## Problem 5
+
+*Based on your final model discuss how each risk factor in your model is associated with the composite outcome.*
+
+Using model3 which includes the interaction term between treatment and severity, the risk factors are associated with the outcome in the following ways:  
+
+- The relative risk for major thrombotic event/death for patients taking high doses of Heparin compared to low doses is exp(-0.642) = 0.526, and is a statistically significant predictor in the model.
+- The relative risk for major thrombotic event/death for patients of medium Ddimer level compared to low Ddimer level is 1.125, and is not a statistically significant predictor in the model.
+- The relative risk for major thrombotic event/death for patients of high Ddimer level compared to low Ddimer level is 1.907, and is a statistically significant predictor in the model.
+- The relative risk for major thrombotic event/death for patients who need ICU level of care compared to patients who do not need ICU level of care is 1.427 and is not a statistically significant predictor in the model.
+- The relative risk for major thrombotic event/death for patients as they get older (standardized) is 1.443 for every unit increase in age and is a statistically significant predictor in the model.
+- The interaction between treatment (dose of Heparin) and severity (need of ICU care vs. not) is a statistically significant predictor in the model, and indicates that the relative risk for thrombotic event/death for patients who both are treated with a high dose of Heparin and who need ICU level of care is 3.133 compared to patients who either have gotten a low dose of Heparin, require non-ICU level of care, or both.
+
+

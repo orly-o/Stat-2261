@@ -1,0 +1,121 @@
+---
+title: "STAT 2261 HW4"
+author: "Orly Olbum"
+date: "3/16/2021"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Spring 2021/1. STAT 2261 - Survival Analysis/Homeworks/HW4")
+library(survival)
+library(KMsurv)
+data(tongue)
+data(larynx)
+```
+
+## Problem 1: 7.4
+
+*In section 1.11, data from a study of the effect of ploidy on survival for patients with tumors of the tongue was reported.*
+
+*(a) Test the hypothesis that the survival rates of patients with cancer of the tongue are the same for patients with aneuploid and diploid tumors using the log-rank test.*
+
+```{r}
+fit1 = survdiff(Surv(time, delta) ~ as.factor(type), data = tongue)
+fit1
+```
+
+The log rank tests a null hypothesis that there is no difference in survival curves between the groups specified (here, between aneuploid and diploid tumors) against the alternative hypothesis that there is evidence of some difference in our sample. The results of this log rank test fails to reject the null hypothesis at alpha = 0.05 with a p-value of 0.09, so we conclude that there is not enough evidence to suggest the survival rates are different in these two groups of patients.
+
+*(b) If primary interest is in detecting differences in survival rates between the two types of cancers which occur soon after the diagnosis of the cancer, repeat part a using a more appropriate test statistic.*
+
+
+```{r}
+# peto-peto
+fit2 = survdiff(Surv(time, delta) ~ as.factor(type), data = tongue, rho = 1)
+fit2
+```
+
+Use Peto-Peto to weight "soon after" observations of diagnosis. We have a p-value of 0.07, which at an alpha of 0.05, we will fail to reject the null hypothesis and conclude there is not evidence to suggest the survival rates are different for these two groups of patients.
+
+
+## Problem 2: 7.10
+
+*In Example 7.6 we found that the four populations of cancer patients had ordered hazard rates. Of interest is knowing which pairs of the hazard rates are different. Using the log-rank test, perform the three pairwise tests of the hypothesis H0j: hj(t) = hj+1(t) vs. HAj: hj(t) < hj+1(t) for j = 1, 2, 3. For each test, use only those individuals with stage j or j+1 of the disease. Make an adjustment to your critical value for multiple testing to give an approximate 0.05 level test.*
+
+```{r}
+stage1 = larynx[larynx$stage == 1,]
+stage2 = larynx[larynx$stage == 2,]
+stage3 = larynx[larynx$stage == 3,]
+stage4 = larynx[larynx$stage == 4,]
+
+lar1 = rbind(stage1, stage2)
+lar2 = rbind(stage2, stage3)
+lar3 = rbind(stage3, stage4)
+
+test1 = survdiff(Surv(time, delta) ~ as.factor(stage), data = lar1)
+test1
+
+test2 = survdiff(Surv(time, delta) ~ as.factor(stage), data = lar2)
+test2
+
+test3 = survdiff(Surv(time, delta) ~ as.factor(stage), data = lar3)
+test3
+```
+
+Since we want the aggregate p-value to be lower than 0.05 in order to reject the null hypothesis, each test presented above should be below 0.05/3 = 0.0167 in order to reject the null hypothesis. Additionally, since we get a two-sided p-value, we divide the results by 2 for our one-sided test. The first two tests (1 vs. 2, 2 vs. 3) do not fall below our new alpha boundary, but the third test (stage 3 vs. stage 4) does lead to a rejection of the null hypothesis.
+
+*Use the information in Example 7.6 and this statistic to make the multiple comparisons.*
+
+Using the test statistic from Example 7.6 and the z-stats from each test after running the full model, we get the following p-values:
+
+```{r}
+full = survdiff(Surv(time, delta) ~ as.factor(stage), data = larynx)
+full
+
+z = full$obs - full$exp
+s = full$var
+
+for(i in 1:3){
+  val = (z[i] - z[i+1]) / sqrt(s[i,i] + s[i+1,i+1] - 2*s[i,i+1])
+  p = round(pnorm(val, mean = 0, sd = 1, lower.tail = TRUE), 3)
+  out = paste0("stage ", i, " vs. ", i+1, ": ", p)
+  print(out)
+}
+```
+
+Using this method, none of the tests between stages provide a significant p-value and we fail to reject the null hypothesis on all counts.
+
+
+## Problem 3: 7.11
+
+*The data on laryngeal cancer patients was collected over the period 1970–1978. It is possible that the therapy used to treat laryngeal cancer may have changed over this nine year period. To adjust for this possible confounding fact, test the hypothesis of no difference in survival between patients with different stages of disease against a global alternative using a test which stratifies on the cancer being diagnosed prior to 1975 or not. Also perform a separate test of the hypothesis of interest in each stratum.*
+
+```{r}
+# assign indicator for prior to 1975 or not
+larynx$prior[larynx$diagyr < 75] = 1
+larynx$prior[larynx$diagyr >= 75] = 0
+
+mod1 = survdiff(Surv(time, delta) ~ as.factor(stage) + strata(prior), data = larynx)
+mod1
+```
+
+Now that we are considering strata of before/after 1957, we have taken into account this possible confounder. With a significant p-value of 6e-05, we can reject the null hypothesis and conclude that, by strata, there is a different in survival between patients with different stages of disease.
+
+What about within each stratum?
+
+```{r}
+larynx.1 = larynx[larynx$prior == 1,]
+larynx.2 = larynx[larynx$prior == 0,]
+
+mod2 = survdiff(Surv(time, delta) ~ as.factor(stage), data = larynx.1)
+mod2
+
+mod3 = survdiff(Surv(time, delta) ~ as.factor(stage), data = larynx.2)
+mod3
+```
+
+Within each stratum (first one is pre-1957, second one is 1975 and later), both produce small enough p-values (0.007 and 0.009, respectively) to reject the null hypothesis that patients with different stages of disease have the same survival.
+
+
+

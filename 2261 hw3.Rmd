@@ -1,0 +1,169 @@
+---
+title: "2261 HW3"
+author: "Orly Olbum"
+date: "3/9/2021"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/orlyo/OneDrive/Desktop/Grad School/Spring 2021/1. STAT 2261 - Survival Analysis/Homeworks/HW3")
+library(Hmisc)
+library(cmprsk)
+getHdata(support)
+# support = read.csv("support.csv")
+data = read.table("data_Sec1_3.dat", header = TRUE)
+aml_low = data[data$g == 2,]
+all = data[data$g == 1,]
+```
+
+## Problem 1
+
+*What proportion of the patients have censored survival times?*
+
+```{r}
+support$censored[support$slos == support$d.time] = 1
+support$censored[support$slos != support$d.time] = 0
+sum(support$censored)/length(support$censored)
+```
+
+There are 253 censored survival times out of 1000 observations, so the proportion of censored observations is .253.
+
+*Make a histogram or empirical distribution function estimate of the censored followup times.*
+
+```{r}
+hist(support$d.time[support$censored == 1], main = "Hist of Censored Followup Times", xlab = " ", labels = TRUE, ylim = c(0, 205))
+```
+
+*What is the typical follow-up duration for a patient in the study who has survived so far?*
+
+Find the KM estimate for follow-up days with the newly defined "censor" as the indicator for censorship, then calculate average survival time.
+
+```{r}
+fit1 = survfit(Surv(slos, censored) ~ 1, data = support, type = "kaplan-meier")
+print(fit1, print.rmean = TRUE)
+```
+
+The mean survival time for patients who have survived so far is 90.20 days.
+
+*What is the typical survival time for patients who have died?*
+
+```{r}
+fit2 = survfit(Surv(slos, death) ~ 1, data = support, type = "kaplan-meier")
+print(fit2, print.rmean = TRUE)
+```
+
+Using death as an indicator rather than censoring, the mean survival time is 32.30 days.
+
+*Taking censoring into account, what is the median survival time from the Kaplan-Meier estimate of the overall survival function?*
+
+```{r}
+fit1
+```
+
+Using censoring as an indicator (overall data), the median survival time is 52 days.
+
+
+
+## Problem 2a
+
+*Using the data reported in Section 1.3, find the quantities specified below for the AML low risk group. Note that for this question, we should use the "t1" (Time To Death Or On Study Time) and "dind" (death indicator).*
+
+# (a)
+*Estimate the survival functions and their standard errors (Greenwood's formula) for the AML low risk group.*
+
+```{r}
+model1 = survfit(Surv(t1, dind) ~ 1, data = aml_low, type = "kaplan-meier", error = "greenwood", 
+                 conf.int = 0.95, conf.type = "plain")
+summary(model1)
+plot(model1, main = "Survival Plot for AML Low Risk Group", xlab = "time", ylab = "survival", col = 3)
+```
+
+# (b)
+*Estimate the cumulative hazard rates and their standard errors (Aalen's formula) for the AML low risk group.*
+
+```{r}
+# H_est1 = -log(fit1$surv) # KM cum. hazard rate
+h = model1$n.event / model1$n.risk
+cum.haz = cumsum(h)
+cum.haz
+plot(cum.haz, main = "Cumulative Hazard Rates", xlab = "", ylab = "Cum. Hazard Rate", type = "l", col = "red")
+
+# NA standard errors
+h.er = model1$n.event / model1$n.risk^2
+cum.h.er = sqrt(cumsum(h.er)) # formula is for variances, take square root for standard errors
+cum.h.er
+plot(cum.h.er, main = "Cumulative Hazard Standard Errors", xlab = "", ylab = "Cum. Hazard Error", type = "l", col = "blue")
+
+# another way to do the exact same thing
+# ch = nelsonaalen(aml_low, t1, dind)
+# plot(aml_low$t1, ch, main = "Cum. Hazard", xlab = "t1", ylab = "hazard rate", pch = 20, col = 2)
+```
+
+# (c)
+*Estimate the mean time to death and find 95% linear confidence interval for the mean survival time for the AML low risk group.*
+
+```{r}
+model.mean = unname(summary(model1)$table[5])
+model.se = unname(summary(model1)$table[6])
+lo = model.mean - 1.96*model.se
+hi = model.mean + 1.96*model.se
+ci = c(lo, hi)
+model.mean; ci
+
+# round(summary(model1)$table, 2)
+```
+
+Mean time to death is 1644.645 days, and a 95% confidence interval for the mean is (1356.353, 1932.938).
+
+# (d)
+*Work out estimates of the median time to death and find 95% log-transformed confidence interval for the median survival time for the AML low risk group.*
+
+```{r}
+model1
+```
+
+The median time to death is 2204 days, with a lower bound of 1063 days and no upper bound.
+
+
+## Problem 3
+
+*Using the data reported in Section 1.3 for the ALL group, find the following quantities for the two competing risks of relapse and death in remission:*
+
+# (a)
+*The estimated cumulative incidence in 500 days.*
+
+```{r}
+cum.inc = cuminc(ftime = all$t1, fstatus = all$dind, group = all$rind)
+cum.inc
+```
+
+The cumulative incidence in 500 days is 0.433 and 0.75 for the relapse and death events, respectively.
+
+# (b)
+*The estimated errors of the two estimators in part (a).*
+
+```{r}
+sqrt(0.01029957)
+sqrt(0.01921658)
+```
+
+The estimated errors from (a) are 0.101 and 0.139, respectively.
+
+
+## Problem 4
+
+*Two hundred and fifty items of an electronic device were used to test their failure times under excessive heat conditions, where 212 items failed within a week and the remaining 44 items were censored at the end of the week. The Nelson-Aalen estimate of the cumulative hazard function is given in Figure 1 and of the parabolic shape. Based on the results from one-sample log-rank tests given in Table 1, draw your conclusion about the distribution of the failure time for this device.*
+
+![](q4_1.png)
+![](q4_2.png)
+
+With a parabolic Cumulative Hazard function plot and two significant results from the test shown, the failure time distribution for this device is likely exponential distribution.
+
+
+
+
+
